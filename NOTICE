@@ -1,0 +1,15 @@
+ADL2 CDR Project
+
+This project combines:
+
+1. Archie (com.nedap.healthcare.archie) - Apache License 2.0
+   https://github.com/openEHR/archie
+
+2. EhrBase (org.ehrbase.openehr) - Apache License 2.0
+   https://github.com/ehrbase/ehrbase
+   Fork baseline: v2.29.0
+
+3. openEHR SDK (org.ehrbase.openehr.sdk) - Apache License 2.0
+   https://github.com/ehrbase/openEHR_SDK
+
+Derivative work: ADL2 knowledge layer (ehrbase/adl2-knowledge module).

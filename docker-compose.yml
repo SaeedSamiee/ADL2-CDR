@@ -1,0 +1,42 @@
+services:
+  ehrbase-db:
+    image: ehrbase/ehrbase-postgres:16.2-mvp
+    environment:
+      EHRBASE_USER_ADMIN: ehrbase
+      EHRBASE_PASSWORD_ADMIN: ehrbase
+    ports:
+      - "5449:5432"
+    volumes:
+      - adl2-cdr-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ehrbase -d ehrbase"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  adl2-cdr:
+    build:
+      context: ./ehrbase
+      dockerfile: Dockerfile
+    depends_on:
+      ehrbase-db:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://ehrbase-db:5432/ehrbase
+      DB_USER_ADMIN: ehrbase
+      DB_PASS_ADMIN: ehrbase
+      DB_USER: ehrbase
+      DB_PASS: ehrbase
+      SECURITY_AUTHTYPE: NONE
+      EHRBASE_TEMPLATE_ADL2_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/ehrbase/rest/openehr/v1/definition/template/adl2"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+
+volumes:
+  adl2-cdr-pg-data:

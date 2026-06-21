@@ -1,0 +1,30 @@
+# Minimal ADL2 operational template fixture (from Archie test resources, trimmed)
+operational_template openEHR-EHR-CLUSTER.simple.v1 {
+    template_id = <
+        ["openehr.org"] = <"openEHR-EHR-CLUSTER.simple.v1">
+    >
+    concept = <"Simple cluster">
+    language = <
+        ["openehr.org"] = <"en">
+    >
+    description = <
+        ["openehr.org"] = <
+            ["text"] = <"Simple cluster">
+        >
+    >
+    definition {
+        CLUSTER {
+            items cardinality matches {0..*; unordered} {
+                ELEMENT {
+                    value matches {
+                        DV_TEXT matches {
+                            list = <
+                                ["en"] = <"text">
+                            >
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

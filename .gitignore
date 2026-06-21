@@ -1,0 +1,19 @@
+# Dependencies
+target/
+*.jar
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+
+# Portable build tools (download locally via scripts)
+tools/
