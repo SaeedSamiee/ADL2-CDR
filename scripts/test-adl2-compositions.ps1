@@ -2,11 +2,22 @@
 # Prerequisites: docker compose up (ehrbase-db and adl2-cdr), EhrBase reachable at $BaseUrl
 
 param(
-    [string]$BaseUrl = "http://localhost:8080/ehrbase/rest/openehr/v1"
+    [string]$BaseUrl = "http://localhost:8080/ehrbase/rest/openehr/v1",
+    [string]$AuthUser = $env:EHRBASE_USER,
+    [string]$AuthPassword = $env:EHRBASE_PASSWORD
 )
 
 $ErrorActionPreference = "Stop"
 $fixtures = Join-Path $PSScriptRoot "..\ehrbase\service\src\test\resources\adl2-fixtures"
+
+function Get-BasicAuthHeader {
+    param([string]$User, [string]$Password)
+    if ([string]::IsNullOrWhiteSpace($User)) { return @{} }
+    $token = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${User}:${Password}"))
+    return @{ Authorization = "Basic $token" }
+}
+
+$AuthHeaders = Get-BasicAuthHeader -User $AuthUser -Password $AuthPassword
 
 function Invoke-EhrBase {
     param(
@@ -17,11 +28,14 @@ function Invoke-EhrBase {
         [hashtable]$Headers = @{}
     )
     $uri = "$BaseUrl$Path"
+    $mergedHeaders = @{}
+    foreach ($key in $AuthHeaders.Keys) { $mergedHeaders[$key] = $AuthHeaders[$key] }
+    foreach ($key in $Headers.Keys) { $mergedHeaders[$key] = $Headers[$key] }
     $params = @{
         Uri = $uri
         Method = $Method
         ContentType = $ContentType
-        Headers = $Headers
+        Headers = $mergedHeaders
     }
     if ($Body) { $params.Body = $Body }
     return Invoke-RestMethod @params

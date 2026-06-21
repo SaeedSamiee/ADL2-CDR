@@ -28,4 +28,4 @@ spring:
     user: ${DB_USER_ADMIN}
     password: ${DB_PASS_ADMIN}
 security:
-  authType: NONE
+  authType: BASIC
