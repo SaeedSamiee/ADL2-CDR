@@ -1,0 +1,83 @@
+operational_template (adl_version=2.0.5; rm_release=1.0.2; generated)
+    openEHR-EHR-COMPOSITION.with_rules_wrapper.v1.0.0
+
+language
+    original_language = <[ISO_639-1::en]>
+
+description
+    lifecycle_state = <"published">
+    details = <
+        ["en"] = <
+            language = <[ISO_639-1::en]>
+            purpose = <"Composition wrapper for blood pressure observation integration tests">
+        >
+    >
+
+definition
+    COMPOSITION[id1] occurrences matches {0..*} matches {    -- With rules wrapper
+        category matches {
+            DV_CODED_TEXT[id10] matches {
+                defining_code matches {[at1]}
+            }
+        }
+        content cardinality matches {1..*; unordered} matches {
+            OBSERVATION[id2] occurrences matches {1..*} matches {    -- Blood pressure
+                data matches {
+                    HISTORY[id2] occurrences matches {0..1} matches {
+                        events cardinality matches {1..*; unordered} matches {
+                            EVENT[id3] occurrences matches {1..*} matches {
+                                data matches {
+                                    ITEM_TREE[id4] occurrences matches {0..1} matches {
+                                        items cardinality matches {3; unordered} matches {
+                                            ELEMENT[id5] occurrences matches {0..3} matches {
+                                                value matches {
+                                                    DV_QUANTITY[id13] occurrences matches {0..1} matches {
+                                                        [magnitude, units, precision] matches {
+                                                            [{|0.0..<1000.0|}, {"mmHg"}, {1}]
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            ELEMENT[id6] occurrences matches {0..3} matches {
+                                                value matches {
+                                                    DV_QUANTITY[id14] occurrences matches {0..1} matches {
+                                                        [magnitude, units, precision] matches {
+                                                            [{|0.0..<1000.0|}, {"mmHg"}, {1}]
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            ELEMENT[id7] occurrences matches {0..3} matches {
+                                                value matches {
+                                                    DV_QUANTITY[id15] occurrences matches {0..1} matches {
+                                                        [magnitude, units, precision] matches {
+                                                            [{|0.0..<1000.0|}, {"mmHg"}, {1}]
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+terminology
+    term_definitions = <
+        ["en"] = <
+            ["id1"] = <
+                text = <"With rules wrapper">
+            >
+            ["id2"] = <
+                text = <"Blood pressure">
+            >
+            ["id10"] = <
+                text = <"Category">
+            >
+        >
+    >

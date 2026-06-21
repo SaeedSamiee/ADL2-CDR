@@ -1,0 +1,7 @@
+SELECT
+  c/uid/value AS composition_uid,
+  c/context/other_context/items[id3]/items[id5]/value AS endorsement,
+  c/context/other_context/items[id3]/items[id7]/value/magnitude AS weight_kg
+FROM EHR e
+CONTAINS COMPOSITION c[openEHR-EHR-COMPOSITION.annotations_rm_path.v1.0.0]
+WHERE e/ehr_id/value = $ehrId

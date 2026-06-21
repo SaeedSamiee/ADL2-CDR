@@ -1,0 +1,8 @@
+SELECT
+  o/data[id2]/events[id3]/data[id4]/items[id5]/value/magnitude AS systolic,
+  o/data[id2]/events[id3]/data[id4]/items[id6]/value/magnitude AS diastolic,
+  o/data[id2]/events[id3]/data[id4]/items[id7]/value/magnitude AS pulse_pressure
+FROM EHR e
+CONTAINS COMPOSITION c
+CONTAINS OBSERVATION o[openEHR-EHR-OBSERVATION.with_rules.v1.0.0]
+WHERE e/ehr_id/value = $ehrId

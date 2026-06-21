@@ -24,6 +24,16 @@
       <artifactId>archie-all</artifactId>
     </dependency>
     <dependency>
+      <groupId>com.nedap.healthcare.archie</groupId>
+      <artifactId>utils</artifactId>
+      <version>${archie.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.threeten</groupId>
+      <artifactId>threeten-extra</artifactId>
+      <version>1.8.0</version>
+    </dependency>
+    <dependency>
       <groupId>org.ehrbase.openehr.sdk</groupId>
       <artifactId>web-template</artifactId>
     </dependency>

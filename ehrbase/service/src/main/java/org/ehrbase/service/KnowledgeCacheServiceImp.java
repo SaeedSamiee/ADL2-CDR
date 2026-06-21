@@ -241,7 +241,11 @@ public class KnowledgeCacheServiceImp implements KnowledgeCacheService {
         }
         try {
             var opt = adl2KnowledgeService.deserializeOptJson(meta.getAdl2OptJson());
-            return adl2KnowledgeService.buildWebTemplate(opt, "en");
+            WebTemplate webTemplate = adl2KnowledgeService.buildWebTemplate(opt, "en");
+            if (webTemplate.getTemplateId() == null && meta.getTemplateId() != null) {
+                webTemplate.setTemplateId(meta.getTemplateId());
+            }
+            return webTemplate;
         } catch (RuntimeException e) {
             throw new IllegalArgumentException(String.format("Invalid ADL2 template: %s", e.getMessage()));
         }
@@ -294,8 +298,10 @@ public class KnowledgeCacheServiceImp implements KnowledgeCacheService {
 
     private void ensureCached(TemplateMetaData template) {
         if (template.isAdl2()) {
-            String templateId = adl2KnowledgeService.resolveTemplateId(
-                    adl2KnowledgeService.deserializeOptJson(template.getAdl2OptJson()));
+            String templateId = template.getTemplateId() != null
+                    ? template.getTemplateId()
+                    : adl2KnowledgeService.resolveTemplateId(
+                            adl2KnowledgeService.deserializeOptJson(template.getAdl2OptJson()));
             CacheProvider.TEMPLATE_UUID_ID_CACHE.get(cacheProvider, template.getInternalId(), () -> {
                 CacheProvider.TEMPLATE_ID_UUID_CACHE.get(cacheProvider, templateId, template::getInternalId);
                 CacheProvider.INTROSPECT_CACHE.get(cacheProvider, templateId, () -> buildAdl2WebTemplate(template));

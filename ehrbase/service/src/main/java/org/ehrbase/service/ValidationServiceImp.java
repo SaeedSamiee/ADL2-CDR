@@ -46,13 +46,13 @@ import org.ehrbase.api.exception.ValidationException;
 import org.ehrbase.api.service.ValidationService;
 import org.ehrbase.openehr.sdk.response.dto.ContributionCreateDto;
 import org.ehrbase.openehr.sdk.terminology.openehr.TerminologyService;
-import org.ehrbase.openehr.sdk.validation.CompositionValidator;
 import org.ehrbase.openehr.sdk.validation.ConstraintViolation;
 import org.ehrbase.openehr.sdk.validation.ConstraintViolationException;
 import org.ehrbase.openehr.sdk.validation.terminology.ExternalTerminologyValidation;
 import org.ehrbase.openehr.sdk.validation.terminology.ItemStructureVisitor;
 import org.ehrbase.openehr.sdk.validation.webtemplate.FastRMObjectValidator;
 import org.ehrbase.openehr.sdk.webtemplate.model.WebTemplate;
+import org.ehrbase.service.validation.EhrbaseCompositionValidator;
 import org.ehrbase.service.validation.ValidationProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -74,7 +74,7 @@ public class ValidationServiceImp implements ValidationService {
 
     private final TerminologyService terminologyService;
 
-    private final ThreadLocal<CompositionValidator> compositionValidator;
+    private final ThreadLocal<EhrbaseCompositionValidator> compositionValidator;
 
     private final Map<String, RMPathQuery> rmPathQueryCache = new ConcurrentHashMap<>();
 
@@ -108,20 +108,20 @@ public class ValidationServiceImp implements ValidationService {
                 objectProvider, disableStrictValidation, delegator, validationProperties.checkForExtraNodes()));
     }
 
-    private static CompositionValidator createCompositionValidator(
+    private static EhrbaseCompositionValidator createCompositionValidator(
             ObjectProvider<ExternalTerminologyValidation> objectProvider,
             boolean disableStrictValidation,
             APathQueryCache delegator,
             boolean checkForChildrenNotInTemplate) {
-        CompositionValidator validator =
-                new CompositionValidator(null, checkForChildrenNotInTemplate, !disableStrictValidation, null);
+        EhrbaseCompositionValidator validator = new EhrbaseCompositionValidator(
+                null, checkForChildrenNotInTemplate, !disableStrictValidation, null);
         objectProvider.ifAvailable(validator::setExternalTerminologyValidation);
 
         setSharedAPathQueryCache(validator, delegator);
         return validator;
     }
 
-    private static void setSharedAPathQueryCache(CompositionValidator validator, APathQueryCache delegator) {
+    private static void setSharedAPathQueryCache(EhrbaseCompositionValidator validator, APathQueryCache delegator) {
         if (delegator == null) {
             return;
         }

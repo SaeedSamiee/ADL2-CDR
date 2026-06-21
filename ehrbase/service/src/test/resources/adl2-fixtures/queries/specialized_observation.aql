@@ -1,0 +1,7 @@
+SELECT
+  o/data[id2]/events[id3]/data[id4]/items[id5]/value AS observation_text,
+  o/data[id2]/events[id3]/data[id4]/items[id7]/items[id2]/value AS cluster_overlay_text
+FROM EHR e
+CONTAINS COMPOSITION c
+CONTAINS OBSERVATION o[openEHR-EHR-OBSERVATION.specialized_template_observation.v1.0.0]
+WHERE e/ehr_id/value = $ehrId
