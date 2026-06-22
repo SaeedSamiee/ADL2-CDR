@@ -20,6 +20,13 @@ spring:
   cache:
     type: CAFFEINE
 
+ehrbase:
+  validation:
+    check-for-extra-nodes: true
+    validate-rm-constraints: false
+    validate-adl2-opt-on-commit: true
+    validate-adl2-rules-on-commit: true
+
 terminology_server:
   tsUrl: 'https://r4.ontoserver.csiro.au/fhir/'
   codePath: '$[\"expansion\"][\"contains\"][*][\"code\"]'

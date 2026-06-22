@@ -17,6 +17,7 @@
  */
 package org.ehrbase.service;
 
+import com.nedap.archie.aom.OperationalTemplate;
 import com.nedap.archie.query.RMPathQuery;
 import com.nedap.archie.rm.archetyped.Archetyped;
 import com.nedap.archie.rm.archetyped.TemplateId;
@@ -40,6 +41,11 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.commons.collections4.CollectionUtils;
 import org.ehrbase.api.dto.EhrStatusDto;
+import org.ehrbase.adl2.knowledge.Adl2CompositionCommitNormalizer;
+import org.ehrbase.adl2.knowledge.Adl2CompositionOptValidator;
+import org.ehrbase.adl2.knowledge.Adl2CompositionRuleValidator;
+import org.ehrbase.adl2.knowledge.Adl2KnowledgeService;
+import org.ehrbase.adl2.knowledge.Adl2RuleViolation;
 import org.ehrbase.api.exception.InternalServerException;
 import org.ehrbase.api.exception.UnprocessableEntityException;
 import org.ehrbase.api.exception.ValidationException;
@@ -72,7 +78,13 @@ public class ValidationServiceImp implements ValidationService {
 
     private final KnowledgeCacheServiceImp knowledgeCacheService;
 
+    private final Adl2KnowledgeService adl2KnowledgeService;
+
     private final TerminologyService terminologyService;
+
+    private final boolean validateAdl2OptOnCommit;
+
+    private final boolean validateAdl2RulesOnCommit;
 
     private final ThreadLocal<EhrbaseCompositionValidator> compositionValidator;
 
@@ -80,12 +92,16 @@ public class ValidationServiceImp implements ValidationService {
 
     public ValidationServiceImp(
             KnowledgeCacheServiceImp knowledgeCacheService,
+            Adl2KnowledgeService adl2KnowledgeService,
             TerminologyService terminologyService,
             ValidationProperties validationProperties,
             ObjectProvider<ExternalTerminologyValidation> objectProvider,
             @Value("${cache.validation.useSharedRMPathQueryCache:true}") boolean sharedAqlQueryCache) {
         this.knowledgeCacheService = knowledgeCacheService;
+        this.adl2KnowledgeService = adl2KnowledgeService;
         this.terminologyService = terminologyService;
+        this.validateAdl2OptOnCommit = validationProperties.validateAdl2OptOnCommit();
+        this.validateAdl2RulesOnCommit = validationProperties.validateAdl2RulesOnCommit();
 
         boolean disableStrictValidation = !validationProperties.validateRmConstraints();
         if (disableStrictValidation) {
@@ -169,9 +185,16 @@ public class ValidationServiceImp implements ValidationService {
         }
 
         // Validate the composition based on WebTemplate
-        List<ConstraintViolation> violations = compositionValidator.get().validate(composition, webTemplate);
+        List<ConstraintViolation> violations = new ArrayList<>(compositionValidator.get().validate(composition, webTemplate));
         if (!violations.isEmpty()) {
             throw new ConstraintViolationException(violations);
+        }
+
+        if (validateAdl2OptOnCommit || validateAdl2RulesOnCommit) {
+            validateAdl2Composition(templateID, composition, violations);
+            if (!violations.isEmpty()) {
+                throw new ConstraintViolationException(violations);
+            }
         }
 
         // check code phrases against terminologies
@@ -181,6 +204,46 @@ public class ValidationServiceImp implements ValidationService {
         } catch (ReflectiveOperationException e) {
             throw new InternalServerException(e);
         }
+    }
+
+    private void validateAdl2Composition(String templateId, Composition composition, List<ConstraintViolation> violations) {
+        knowledgeCacheService.retrieveAdl2OperationalTemplate(templateId).ifPresent(optJson -> {
+            OperationalTemplate templateOpt = adl2KnowledgeService.deserializeOptJson(optJson);
+            if (validateAdl2OptOnCommit) {
+                Adl2CompositionOptValidator.validate(
+                                composition,
+                                templateOpt,
+                                archetypeId -> knowledgeCacheService
+                                        .retrieveAdl2OperationalTemplate(archetypeId)
+                                        .map(adl2KnowledgeService::deserializeOptJson),
+                                adl2KnowledgeService::validatePathable)
+                        .stream()
+                        .map(ValidationServiceImp::toConstraintViolation)
+                        .forEach(violations::add);
+            }
+            if (validateAdl2RulesOnCommit) {
+                Adl2CompositionRuleValidator.validate(
+                                Adl2CompositionCommitNormalizer.normalize(composition, templateOpt),
+                                templateOpt,
+                                archetypeId -> knowledgeCacheService
+                                        .retrieveAdl2OperationalTemplate(archetypeId)
+                                        .map(adl2KnowledgeService::deserializeOptJson))
+                        .stream()
+                        .map(ValidationServiceImp::toRuleConstraintViolation)
+                        .forEach(violations::add);
+            }
+        });
+    }
+
+    private static ConstraintViolation toConstraintViolation(RMObjectValidationMessage message) {
+        String path = message.getPath() != null ? message.getPath() : "";
+        String text = message.getMessage() != null ? message.getMessage() : message.toString();
+        return new ConstraintViolation(path, text);
+    }
+
+    private static ConstraintViolation toRuleConstraintViolation(Adl2RuleViolation violation) {
+        String path = violation.assertionTag() != null ? "/rules/" + violation.assertionTag() : "/rules";
+        return new ConstraintViolation(path, violation.message());
     }
 
     private static void compositionMandatoryProperty(Object value, String attribute) {

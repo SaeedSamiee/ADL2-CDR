@@ -618,7 +618,7 @@ public class ArchieOptParser {
         node.setAqlPath(node.getAqlPathDto().replaceLastNode(n -> n.withAtCode(observationArchetypeId)));
     }
 
-    private static String resolveSlotArchetypeNodeId(ArchetypeSlot slot) {
+    public static String resolveSlotArchetypeNodeId(ArchetypeSlot slot) {
         if (slot.getIncludes() == null || slot.getIncludes().isEmpty()) {
             return null;
         }

@@ -5,6 +5,7 @@
 package org.ehrbase.service.adl2;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 import com.nedap.archie.aom.OperationalTemplate;
@@ -21,7 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.ehrbase.adl2.knowledge.Adl2ArchetypeFlattener;
-import org.ehrbase.adl2.knowledge.Adl2KnowledgeService;
+import org.ehrbase.adl2.knowledge.Adl2CompositionRuleValidator;
 import org.ehrbase.api.dto.AqlQueryRequest;
 import org.ehrbase.api.service.Adl2TemplateService;
 import org.ehrbase.api.service.AqlQueryService;
@@ -30,6 +31,7 @@ import org.ehrbase.api.service.TemplateService;
 import org.ehrbase.api.service.ValidationService;
 import org.ehrbase.openehr.sdk.response.dto.ehrscape.QueryResultDto;
 import org.ehrbase.openehr.sdk.response.dto.ehrscape.query.ResultHolder;
+import org.ehrbase.openehr.sdk.validation.ConstraintViolationException;
 import org.ehrbase.service.CompositionServiceImp;
 import org.ehrbase.test.Adl2DataIntegrationTest;
 import org.junit.jupiter.api.BeforeAll;
@@ -46,8 +48,8 @@ import org.springframework.beans.factory.annotation.Autowired;
  *   <li>{@code specialized_template_observation.opt2.adls} – observation with referenced cluster overlay archetype</li>
  * </ul>
  *
- * <p>Constraint violations are enforced on commit. ADL rule assertions are evaluated via
- * {@link Adl2ArchetypeFlattener} because EhrBase validates constraints, not rules, at commit time.
+ * <p>Constraint violations and ADL rule assertions are enforced on commit via WebTemplate validation,
+ * Archie OPT validation, and {@link Adl2CompositionRuleValidator} for nested component archetypes.
  */
 @Adl2DataIntegrationTest
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -79,12 +81,7 @@ class Adl2CompositionDataIntegrationIT {
     @Autowired
     AqlQueryService aqlQueryService;
 
-    @Autowired
-    Adl2KnowledgeService adl2KnowledgeService;
-
     private OperationalTemplate withRulesOpt;
-    private OperationalTemplate prescriptionOpt;
-    private OperationalTemplate withRulesWrapperOpt;
     private UUID ehrId;
 
     @BeforeAll
@@ -98,10 +95,6 @@ class Adl2CompositionDataIntegrationIT {
         adl2TemplateService.create(load("/adl2-fixtures/openEHR-EHR-COMPOSITION.with_rules_wrapper.v1.0.0.opt2.adls"));
         adl2TemplateService.create(
                 load("/adl2-fixtures/openEHR-EHR-COMPOSITION.specialized_observation_wrapper.v1.0.0.opt2.adls"));
-        prescriptionOpt = adl2KnowledgeService.deserializeOptJson(
-                adl2TemplateService.findAdl2OptJson(PRESCRIPTION_TEMPLATE));
-        withRulesWrapperOpt = adl2KnowledgeService.deserializeOptJson(
-                adl2TemplateService.findAdl2OptJson(WITH_RULES_WRAPPER_TEMPLATE));
     }
 
     @BeforeEach
@@ -112,6 +105,8 @@ class Adl2CompositionDataIntegrationIT {
     @Test
     void prescriptionTemplate_exampleComposition_persistsAndIsQueryable() {
         Composition composition = templateService.buildExample(PRESCRIPTION_TEMPLATE);
+        setEndorsement(composition, "Robert");
+        setWeightKg(composition, 80.0);
         assertDoesNotThrow(() -> validationService.check(composition));
         compositionService.create(ehrId, composition);
 
@@ -125,7 +120,8 @@ class Adl2CompositionDataIntegrationIT {
         Composition composition = templateService.buildExample(PRESCRIPTION_TEMPLATE);
         setEndorsement(composition, "NotAllowedName");
 
-        assertThat(adl2KnowledgeService.validateComposition(composition, prescriptionOpt)).isNotEmpty();
+        assertThatThrownBy(() -> validationService.check(composition))
+                .isInstanceOf(ConstraintViolationException.class);
     }
 
     @Test
@@ -133,7 +129,8 @@ class Adl2CompositionDataIntegrationIT {
         Composition composition = templateService.buildExample(PRESCRIPTION_TEMPLATE);
         setWeightKg(composition, 450.0);
 
-        assertThat(adl2KnowledgeService.validateComposition(composition, prescriptionOpt)).isNotEmpty();
+        assertThatThrownBy(() -> validationService.check(composition))
+                .isInstanceOf(ConstraintViolationException.class);
     }
 
     @Test
@@ -155,21 +152,22 @@ class Adl2CompositionDataIntegrationIT {
     }
 
     @Test
-    void bloodPressureRules_nonCompliantAssertion_failsRulesButPassesConstraints() {
+    void bloodPressureRules_nonCompliantAssertion_rejectedAtValidation() {
         Composition composition = bloodPressureFromFlat(75.0, 95.0, 20.0);
         assertThat(Adl2ArchetypeFlattener.assertionPassed(
                         Adl2ArchetypeFlattener.evaluateRules(
                                 (com.nedap.archie.rm.archetyped.Pathable) composition.getContent().get(0), withRulesOpt),
                         "systolic_greater_than_diastolic"))
                 .isFalse();
-        assertDoesNotThrow(() -> validationService.check(composition));
-        compositionService.create(ehrId, composition);
+        assertThatThrownBy(() -> validationService.check(composition))
+                .isInstanceOf(ConstraintViolationException.class);
     }
 
     @Test
     void bloodPressureRules_nonCompliantMagnitudeRange_rejectedAtValidation() {
         Composition composition = bloodPressureFromFlat(1500.0, 80.0, 1420.0);
-        assertThat(adl2KnowledgeService.validateComposition(composition, withRulesWrapperOpt)).isNotEmpty();
+        assertThatThrownBy(() -> validationService.check(composition))
+                .isInstanceOf(ConstraintViolationException.class);
     }
 
     @Test
@@ -202,6 +200,8 @@ class Adl2CompositionDataIntegrationIT {
         for (RMObjectWithPath match : quantities) {
             DvQuantity quantity = (DvQuantity) match.getObject();
             quantity.setMagnitude(magnitude);
+            quantity.setUnits("mmHg");
+            quantity.setPrecision(1L);
         }
     }
 

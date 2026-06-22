@@ -10,6 +10,7 @@ import com.nedap.archie.aom.Archetype;
 import com.nedap.archie.aom.OperationalTemplate;
 import com.nedap.archie.json.ArchieJacksonConfiguration;
 import com.nedap.archie.json.JacksonUtil;
+import com.nedap.archie.rm.archetyped.Pathable;
 import com.nedap.archie.rm.composition.Composition;
 import com.nedap.archie.rmobjectvalidator.RMObjectValidationMessage;
 import com.nedap.archie.rmobjectvalidator.RMObjectValidator;
@@ -30,7 +31,9 @@ public class Adl2KnowledgeServiceImpl implements Adl2KnowledgeService {
     private final ADLParser adlParser = new ADLParser();
     private final ArchieWebTemplateBuilder webTemplateBuilder = new ArchieWebTemplateBuilder();
     private final RMObjectValidator validator = new RMObjectValidator(
-            ArchieRMInfoLookup.getInstance(), templateId -> null, new ValidationConfiguration.Builder().build());
+            ArchieRMInfoLookup.getInstance(),
+            templateId -> null,
+            new ValidationConfiguration.Builder().validateInvariants(false).build());
 
     @Override
     public OperationalTemplate parseTemplateSource(String source) {
@@ -91,6 +94,11 @@ public class Adl2KnowledgeServiceImpl implements Adl2KnowledgeService {
     @Override
     public List<RMObjectValidationMessage> validateComposition(Composition composition, OperationalTemplate opt) {
         return validator.validate(opt, composition);
+    }
+
+    @Override
+    public List<RMObjectValidationMessage> validatePathable(OperationalTemplate opt, Pathable pathable) {
+        return validator.validate(opt, pathable);
     }
 
     @Override

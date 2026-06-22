@@ -5,6 +5,7 @@
 package org.ehrbase.adl2.knowledge;
 
 import com.nedap.archie.aom.OperationalTemplate;
+import com.nedap.archie.rm.archetyped.Pathable;
 import com.nedap.archie.rm.composition.Composition;
 import com.nedap.archie.rmobjectvalidator.RMObjectValidationMessage;
 import java.util.List;
@@ -26,6 +27,8 @@ public interface Adl2KnowledgeService {
     WebTemplate buildWebTemplate(OperationalTemplate opt, String language);
 
     List<RMObjectValidationMessage> validateComposition(Composition composition, OperationalTemplate opt);
+
+    List<RMObjectValidationMessage> validatePathable(OperationalTemplate opt, Pathable pathable);
 
     String serializeAdl(OperationalTemplate opt);
 }

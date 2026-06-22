@@ -1,0 +1,20 @@
+# Production / external PostgreSQL profile.
+# Activate with: SPRING_PROFILES_ACTIVE=production
+# Set DB_URL, DB_USER, DB_PASS, DB_USER_ADMIN, DB_PASS_ADMIN (same names as docker profile).
+
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASS}
+    hikari:
+      maximum-pool-size: 50
+      max-lifetime: 1800000
+      minimum-idle: 10
+  flyway:
+    schemas: ehr
+    user: ${DB_USER_ADMIN}
+    password: ${DB_PASS_ADMIN}
+
+security:
+  authType: ${SECURITY_AUTHTYPE:BASIC}

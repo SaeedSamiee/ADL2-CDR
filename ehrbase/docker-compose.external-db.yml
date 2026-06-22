@@ -1,0 +1,27 @@
+#
+# EhrBase only — connect to an existing PostgreSQL instance.
+#
+# 1. Copy and edit database settings:
+#      cp .env.ehrbase.example .env.ehrbase
+#    Set DB_URL to your server, e.g.:
+#      DB_URL=jdbc:postgresql://db.example.com:5432/ehrbase
+#
+# 2. Ensure the database is initialized (see README Deployment → External PostgreSQL).
+#
+# 3. Start:
+#      docker compose -f docker-compose.external-db.yml up -d
+#
+services:
+
+  ehrbase:
+    image: ${EHRBASE_IMAGE:-ehrbase/ehrbase:next}
+    env_file:
+      - .env.ehrbase
+    ports:
+      - "${EHRBASE_PORT:-8080}:8080"
+    networks:
+      - ehrbase-net
+    restart: unless-stopped
+
+networks:
+  ehrbase-net: { }

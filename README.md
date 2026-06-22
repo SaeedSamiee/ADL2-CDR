@@ -14,6 +14,99 @@ Standalone openEHR Clinical Data Repository forked from [EhrBase v2.29.0](https:
 
 ADL 1.4 templates remain supported behind the existing endpoints for migration. New ADL2 templates use Archie `OperationalTemplate` end-to-end without node-id remapping.
 
+## ADL2 template support
+
+### Supported data value types (`ELEMENT.value`)
+
+ADL2 templates are converted to WebTemplates by `ArchieOptParser` in `ehrbase/adl2-knowledge/`. The following **data value** RM types can appear as `ELEMENT` values (including multi-choice `ELEMENT` nodes):
+
+| RM type | JSON `_type` | Notes |
+|---------|--------------|--------|
+| `DV_TEXT` | `DV_TEXT` | ADL string value lists enforced on commit (ADL2 OPT) |
+| `DV_CODED_TEXT` | `DV_CODED_TEXT` | Terminology / code constraints via WebTemplate + terminology service |
+| `DV_QUANTITY` | `DV_QUANTITY` | Units + magnitude ranges from ADL tuples enforced on commit |
+| `DV_COUNT` | `DV_COUNT` | Integer counts |
+| `DV_PROPORTION` | `DV_PROPORTION` | Ratios / proportions |
+| `DV_BOOLEAN` | `DV_BOOLEAN` | |
+| `DV_DATE` | `DV_DATE` | |
+| `DV_TIME` | `DV_TIME` | |
+| `DV_DATE_TIME` | `DV_DATE_TIME` | |
+| `DV_DURATION` | `DV_DURATION` | |
+| `DV_ORDINAL` | `DV_ORDINAL` | |
+| `DV_IDENTIFIER` | `DV_IDENTIFIER` | |
+| `DV_URI` | `DV_URI` | |
+| `DV_EHR_URI` | `DV_EHR_URI` | |
+| `DV_MULTIMEDIA` | `DV_MULTIMEDIA` | |
+| `DV_PARSABLE` | `DV_PARSABLE` | |
+| `DV_STATE` | `DV_STATE` | |
+
+### Supported structure and entry types
+
+| Category | RM types |
+|----------|----------|
+| **Item structures** | `ITEM_TREE`, `CLUSTER`, `ELEMENT` |
+| **Composition content** | `OBSERVATION`, `EVALUATION`, `INSTRUCTION`, `ACTION`, `ADMIN_ENTRY`, `SECTION` |
+| **Observation data** | `HISTORY`, `POINT_EVENT`, `INTERVAL_EVENT` |
+| **Composition context** | `EVENT_CONTEXT` with nested item structures |
+| **Archetype slots** | `allow_archetype` slots resolved to nested component archetypes (e.g. medication instruction, observation wrapper) |
+
+### Unsupported / rejected types
+
+| RM type | When rejected |
+|---------|----------------|
+| `ITEM_TABLE` | Template upload (ADL 1.4 path) and WebTemplate support check |
+| `DV_SCALE` | ADL2 WebTemplate build (`ArchieOptParser`) |
+
+Other RM types may parse if Archie can instantiate them, but only the types above are explicitly wired for WebTemplate generation and clinical validation.
+
+### Nested component archetypes
+
+ADL2 composition templates can include **archetype slots** (`allow_archetype`) that resolve to separate registered OPTs at commit time (for example a composition wrapper containing an `OBSERVATION` or `INSTRUCTION`). On commit:
+
+- Each nested content item is validated against its **component OPT** (looked up by `archetype_node_id`).
+- **ADL rules** on the composition OPT and on each nested component OPT are evaluated.
+- **Context constraints** under `/context` are always validated on the composition OPT, including wrapper templates with nested openEHR archetype content.
+
+Slot `archetype_node_id` values are normalized before validation (local slot ids such as `id8` are resolved to full archetype ids such as `openEHR-EHR-INSTRUCTION.medication.v1`).
+
+### Commit validation (ADL2 templates)
+
+When a composition references an uploaded ADL2 template, `ValidationServiceImp` runs (in order):
+
+1. **RM mandatory properties** — name, language, category, composer, template id, etc.
+2. **WebTemplate validation** — cardinality, required nodes, path coverage, extra nodes (`check-for-extra-nodes`).
+3. **ADL2 OPT validation** (`validate-adl2-opt-on-commit`, default `true`):
+   - **Commit normalizer** — fixes common example/commit mismatches (category `431` → `at1`, slot id resolution).
+   - **Component OPT validation** — Archie OPT constraints on each nested content archetype.
+   - **Composition OPT validation** — Archie path validation on the full composition (skipped for wrapper templates where nested content uses full openEHR archetype ids, to avoid duplicate slot noise).
+   - **Context constraint validation** — explicit walk of `/context` ADL constraints not fully covered by full-composition Archie validate: `CString` value lists (e.g. endorsement names) and `COrdered` quantity magnitude ranges (e.g. weight in kg/lb).
+4. **ADL2 rule validation** (`validate-adl2-rules-on-commit`, default `true`) — rule assertions from the template OPT and nested component OPTs.
+5. **Terminology validation** — external terminology checks for coded values.
+
+Violations from steps 3–4 return `ConstraintViolationException` with RM paths and messages.
+
+**Configuration** (`ehrbase.validation` in `application.yml` or environment):
+
+| Property | Default | Purpose |
+|----------|---------|---------|
+| `validate-rm-constraints` | `true` | Strict Archie RM invariant checks during WebTemplate validation |
+| `check-for-extra-nodes` | `true` | Reject compositions containing nodes not in the WebTemplate |
+| `validate-adl2-opt-on-commit` | `true` | ADL2 OPT + context constraint validation on commit |
+| `validate-adl2-rules-on-commit` | `true` | ADL rule assertion validation on commit |
+
+Example (Spring YAML):
+
+```yaml
+ehrbase:
+  validation:
+    validate-rm-constraints: true
+    check-for-extra-nodes: true
+    validate-adl2-opt-on-commit: true
+    validate-adl2-rules-on-commit: true
+```
+
+**Note:** `GET …/definition/template/{templateId}/example` uses the generic example generator, which may produce placeholder values that violate ADL2 value-list or range constraints. Clients should adjust example data to match OPT constraints before commit, or build compositions from validated fixtures.
+
 ## Prerequisites
 
 - Java 21 (EhrBase v2.29.0)
@@ -40,10 +133,14 @@ Or on Unix:
 
 ## Run locally
 
+Quick start after [building](#build):
+
 ```powershell
 cd ehrbase
+Copy-Item .env.ehrbase.example .env.ehrbase   # first time only
 docker compose up -d
-java -jar application/target/ehrbase-2.29.0.jar
+# or from repo root:
+.\scripts\deploy-docker.ps1
 ```
 
 | Service | URL |
@@ -52,7 +149,184 @@ java -jar application/target/ehrbase-2.29.0.jar
 | Swagger UI | http://localhost:8080/ehrbase/swagger-ui.html |
 | Health / status | http://localhost:8080/ehrbase/rest/status |
 
-**Docker Compose** uses the `docker` Spring profile with **HTTP Basic authentication enabled** (see [Authentication](#authentication)). The `local` profile (default for `java -jar` without extra config) keeps auth disabled for development and integration tests.
+For JAR-only development (no Docker), see [Deployment → JAR on a host](#jar-on-a-host-no-docker).
+
+---
+
+## Deployment
+
+EhrBase stores all clinical data in **PostgreSQL**. Deployment means: provision Postgres, point the app at it with JDBC settings, then start the server so **Flyway** creates/migrates schema `ehr`.
+
+### Configuration files
+
+| File | Purpose |
+|------|---------|
+| `ehrbase/.env.ehrbase.example` | Documented template — copy to `.env.ehrbase` |
+| `ehrbase/.env.ehrbase` | Active Docker env (DB URLs, credentials, auth) |
+| `ehrbase/docker-compose.yml` | Bundled **EhrBase + PostgreSQL + Keycloak** |
+| `ehrbase/docker-compose.external-db.yml` | **EhrBase only** — external PostgreSQL |
+| `ehrbase/configuration/.../application-docker.yml` | Spring `docker` profile (container entrypoint) |
+| `ehrbase/configuration/.../application-production.yml` | Spring `production` profile (JAR / VM / K8s) |
+
+### PostgreSQL connection variables
+
+Set these in `.env.ehrbase` (Docker) or as environment variables (JAR / Kubernetes):
+
+| Variable | Role | Example |
+|----------|------|---------|
+| `DB_URL` | JDBC URL | `jdbc:postgresql://ehrdb:5432/ehrbase` |
+| `DB_USER` | Runtime DB user (DML) | `ehrbase_restricted` |
+| `DB_PASS` | Runtime password | *(secret)* |
+| `DB_USER_ADMIN` | Flyway migration user (DDL) | `ehrbase` |
+| `DB_PASS_ADMIN` | Migration password | *(secret)* |
+
+Optional JDBC parameters: `?sslmode=require` for managed cloud databases.
+
+**Two-user model:** Flyway connects as `DB_USER_ADMIN` to apply migrations; the application uses `DB_USER` for normal queries. The bundled Postgres image creates both users and database `ehrbase` with schemas `ehr` and `ext` on first start.
+
+When using **bundled Postgres**, also keep these aligned with `DB_*` (used by the `ehrdb` container init):
+
+| Variable | Purpose |
+|----------|---------|
+| `EHRBASE_USER` / `EHRBASE_PASSWORD` | Same as `DB_USER` / `DB_PASS` |
+| `EHRBASE_USER_ADMIN` / `EHRBASE_PASSWORD_ADMIN` | Same as `DB_USER_ADMIN` / `DB_PASS_ADMIN` |
+| `POSTGRES_PASSWORD` | Superuser `postgres` inside the container |
+
+### Option A — Docker Compose with bundled PostgreSQL (recommended)
+
+```powershell
+cd ehrbase
+Copy-Item .env.ehrbase.example .env.ehrbase
+docker compose up -d
+```
+
+- **`ehrbase`** reads `.env.ehrbase`, activates Spring profile `docker`, waits for healthy **`ehrdb`**, runs Flyway, then serves on port `8080`.
+- **`ehrdb`** persists data in Docker volume `ehrdb-data`.
+- **`keycloak`** on port `8081` (optional OAuth testing).
+
+Verify:
+
+```powershell
+curl -u ehrbase-user:SuperSecretPassword http://localhost:8080/ehrbase/rest/status
+```
+
+Stop and keep data: `docker compose down`  
+Stop and wipe DB volume: `docker compose down -v`
+
+Change host ports via `.env.ehrbase` or shell:
+
+```bash
+EHRBASE_PORT=9080 POSTGRES_PORT=5433 docker compose up -d
+```
+
+### Option B — Docker Compose with external PostgreSQL
+
+Use when Postgres is already running (RDS, Azure Database, on-prem cluster, etc.).
+
+1. **Prepare the database** (once). Either:
+   - Run the official init image briefly, or
+   - Execute `ehrbase/createdb-docker.sql` against your instance (creates database `ehrbase`, users, schemas `ehr`/`ext`, extension `uuid-ossp`).
+
+2. **Configure** `.env.ehrbase`:
+
+```bash
+DB_URL=jdbc:postgresql://db.example.com:5432/ehrbase
+DB_USER=ehrbase_restricted
+DB_PASS=<runtime-secret>
+DB_USER_ADMIN=ehrbase
+DB_PASS_ADMIN=<admin-secret>
+```
+
+3. **Start EhrBase only:**
+
+```powershell
+cd ehrbase
+docker compose -f docker-compose.external-db.yml up -d
+# or from repo root:
+.\scripts\deploy-docker.ps1 -ExternalDb
+```
+
+Use `host.docker.internal` instead of `localhost` when Postgres runs on the Docker host (Windows/macOS).
+
+### Option C — JAR on a host (no Docker)
+
+Build the JAR ([Build](#build)), ensure PostgreSQL is reachable, then:
+
+**Development (auth off, fixed localhost DB)** — default `local` profile:
+
+```powershell
+java -jar application/target/ehrbase-2.29.0.jar
+```
+
+Uses `application-local.yml` → `jdbc:postgresql://localhost:5432/ehrbase`.
+
+**Production-style (env-driven DB + BASIC auth)** — `production` profile:
+
+```powershell
+$env:SPRING_PROFILES_ACTIVE = "production"
+$env:DB_URL = "jdbc:postgresql://db-server:5432/ehrbase"
+$env:DB_USER = "ehrbase_restricted"
+$env:DB_PASS = "<secret>"
+$env:DB_USER_ADMIN = "ehrbase"
+$env:DB_PASS_ADMIN = "<secret>"
+$env:SECURITY_AUTHTYPE = "BASIC"
+java -jar application/target/ehrbase-2.29.0.jar
+```
+
+Spring Boot also accepts `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, etc. if you prefer standard names.
+
+### Option D — Custom / cloud Kubernetes
+
+1. Deploy PostgreSQL (or use a managed service).
+2. Create secrets from the [PostgreSQL connection variables](#postgresql-connection-variables).
+3. Run the EhrBase container with:
+   - `env` from secrets
+   - Spring profile `docker` (container) or `production` (generic)
+   - Liveness probe: `GET /ehrbase/rest/status`
+4. Mount nothing for DB — migrations run automatically on startup via Flyway.
+
+Example manifest fragment:
+
+```yaml
+env:
+  - name: SPRING_PROFILES_ACTIVE
+    value: docker
+  - name: DB_URL
+    value: jdbc:postgresql://postgres.default.svc:5432/ehrbase
+  - name: DB_USER
+    valueFrom: { secretKeyRef: { name: ehrbase-db, key: runtime-user } }
+  - name: DB_PASS
+    valueFrom: { secretKeyRef: { name: ehrbase-db, key: runtime-password } }
+  - name: DB_USER_ADMIN
+    valueFrom: { secretKeyRef: { name: ehrbase-db, key: admin-user } }
+  - name: DB_PASS_ADMIN
+    valueFrom: { secretKeyRef: { name: ehrbase-db, key: admin-password } }
+  - name: SECURITY_AUTHTYPE
+    value: BASIC
+```
+
+### Associating an already-running deployment with a new database
+
+PostgreSQL cannot be swapped at runtime. To point a deployment at a different database:
+
+1. Prepare the new PostgreSQL instance (empty or restored from backup).
+2. Update `DB_*` in `.env.ehrbase` or your orchestrator secrets.
+3. **Restart** EhrBase (Flyway runs on startup).
+4. Confirm `GET /ehrbase/rest/status` and create a test EHR.
+
+To **migrate existing data**, backup/restore the `ehrbase` PostgreSQL database; changing JDBC URL alone does not move clinical content.
+
+### Deployment troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| `Connection refused` on startup | Wrong `DB_URL` host/port | Use service name `ehrdb` inside compose network; FQDN/IP externally |
+| Flyway / permission errors | Runtime user used for migrations | Ensure `DB_USER_ADMIN` has DDL on schema `ehr` |
+| App starts but empty API errors | Migrations failed silently | Check container logs for Flyway; connect as admin and inspect schema `ehr` |
+| Auth 401 after deploy | `SECURITY_AUTHTYPE=BASIC` | Send `Authorization: Basic …` (see [Authentication](#authentication)) |
+| SSL errors to cloud Postgres | Missing SSL in JDBC URL | Add `?sslmode=require` to `DB_URL` |
+
+**Docker Compose** uses the `docker` Spring profile with **HTTP Basic authentication** enabled by default. The `local` profile (default for `java -jar` without extra config) keeps auth disabled for development and integration tests.
 
 ---
 
@@ -250,7 +524,7 @@ $env:EHRBASE_PASSWORD = "SuperSecretPassword"
 
 ### RM JSON schemas (required fields)
 
-JSON representations use Jackson polymorphism: every RM object includes `"_type": "<RM_TYPE_NAME>"`. Schemas below list **attributes required by the openEHR RM 1.0.4 specification** and **additional checks enforced by this CDR** on create/update. Template-specific constraints (cardinality, value ranges, coded text lists) are enforced via WebTemplate validation at commit; full ADL2 OPT constraints are available through Archie but not yet wired into every commit path for ADL2 templates.
+JSON representations use Jackson polymorphism: every RM object includes `"_type": "<RM_TYPE_NAME>"`. Schemas below list **attributes required by the openEHR RM 1.0.4 specification** and **additional checks enforced by this CDR** on create/update. Template-specific constraints (cardinality, value ranges, coded text lists) are enforced via WebTemplate validation at commit. For ADL2 templates, see [ADL2 template support](#adl2-template-support) for supported types and the full commit validation pipeline (`validate-adl2-opt-on-commit` and `validate-adl2-rules-on-commit`, both default `true`).
 
 Shared definitions used by multiple schemas:
 
@@ -336,6 +610,158 @@ Shared definitions used by multiple schemas:
           "properties": {
             "_type": { "const": "DV_DATE_TIME" },
             "value": { "type": "string", "format": "date-time" }
+          },
+          "required": ["value"]
+        }
+      ]
+    },
+    "DvBoolean": {
+      "allOf": [
+        { "$ref": "#/$defs/RmObject" },
+        {
+          "properties": {
+            "_type": { "const": "DV_BOOLEAN" },
+            "value": { "type": "boolean" }
+          },
+          "required": ["value"]
+        }
+      ]
+    },
+    "DvCount": {
+      "allOf": [
+        { "$ref": "#/$defs/RmObject" },
+        {
+          "properties": {
+            "_type": { "const": "DV_COUNT" },
+            "magnitude": { "type": "integer" }
+          },
+          "required": ["magnitude"]
+        }
+      ]
+    },
+    "DvProportion": {
+      "allOf": [
+        { "$ref": "#/$defs/RmObject" },
+        {
+          "properties": {
+            "_type": { "const": "DV_PROPORTION" },
+            "numerator": { "type": "number" },
+            "denominator": { "type": "number" },
+            "type": { "type": "integer" },
+            "precision": { "type": "integer" }
+          },
+          "required": ["numerator", "denominator"]
+        }
+      ]
+    },
+    "DvDate": {
+      "allOf": [
+        { "$ref": "#/$defs/RmObject" },
+        {
+          "properties": {
+            "_type": { "const": "DV_DATE" },
+            "value": { "type": "string" }
+          },
+          "required": ["value"]
+        }
+      ]
+    },
+    "DvTime": {
+      "allOf": [
+        { "$ref": "#/$defs/RmObject" },
+        {
+          "properties": {
+            "_type": { "const": "DV_TIME" },
+            "value": { "type": "string" }
+          },
+          "required": ["value"]
+        }
+      ]
+    },
+    "DvDuration": {
+      "allOf": [
+        { "$ref": "#/$defs/RmObject" },
+        {
+          "properties": {
+            "_type": { "const": "DV_DURATION" },
+            "value": { "type": "string" }
+          },
+          "required": ["value"]
+        }
+      ]
+    },
+    "DvOrdinal": {
+      "allOf": [
+        { "$ref": "#/$defs/RmObject" },
+        {
+          "properties": {
+            "_type": { "const": "DV_ORDINAL" },
+            "value": { "type": "integer" },
+            "symbol": { "$ref": "#/$defs/DvCodedText" }
+          },
+          "required": ["value"]
+        }
+      ]
+    },
+    "DvUri": {
+      "allOf": [
+        { "$ref": "#/$defs/RmObject" },
+        {
+          "properties": {
+            "_type": { "const": "DV_URI" },
+            "value": { "type": "string" }
+          },
+          "required": ["value"]
+        }
+      ]
+    },
+    "DvEhrUri": {
+      "allOf": [
+        { "$ref": "#/$defs/RmObject" },
+        {
+          "properties": {
+            "_type": { "const": "DV_EHR_URI" },
+            "value": { "type": "string" }
+          },
+          "required": ["value"]
+        }
+      ]
+    },
+    "DvMultimedia": {
+      "allOf": [
+        { "$ref": "#/$defs/RmObject" },
+        {
+          "properties": {
+            "_type": { "const": "DV_MULTIMEDIA" },
+            "media_type": { "$ref": "#/$defs/CodePhrase" },
+            "size": { "type": "integer" },
+            "data": { "type": "string" }
+          },
+          "required": ["media_type"]
+        }
+      ]
+    },
+    "DvParsable": {
+      "allOf": [
+        { "$ref": "#/$defs/RmObject" },
+        {
+          "properties": {
+            "_type": { "const": "DV_PARSABLE" },
+            "value": { "type": "string" },
+            "formalism": { "type": "string" }
+          },
+          "required": ["value", "formalism"]
+        }
+      ]
+    },
+    "DvState": {
+      "allOf": [
+        { "$ref": "#/$defs/RmObject" },
+        {
+          "properties": {
+            "_type": { "const": "DV_STATE" },
+            "value": { "$ref": "#/$defs/DvCodedText" },
+            "is_terminal": { "type": "boolean" }
           },
           "required": ["value"]
         }
@@ -664,11 +1090,25 @@ Each entry inherits RM **ENTRY** requirements when present in content.
     "name": { "$ref": "openehr-common.json#/$defs/DvText" },
     "archetype_node_id": { "type": "string" },
     "value": {
+      "description": "One of the supported ADL2 data value types (see ADL2 template support).",
       "oneOf": [
         { "$ref": "openehr-common.json#/$defs/DvText" },
         { "$ref": "openehr-common.json#/$defs/DvCodedText" },
         { "$ref": "openehr-common.json#/$defs/DvQuantity" },
-        { "$ref": "openehr-common.json#/$defs/DvDateTime" }
+        { "$ref": "openehr-common.json#/$defs/DvDateTime" },
+        { "$ref": "openehr-common.json#/$defs/DvIdentifier" },
+        { "$ref": "openehr-common.json#/$defs/DvBoolean" },
+        { "$ref": "openehr-common.json#/$defs/DvCount" },
+        { "$ref": "openehr-common.json#/$defs/DvProportion" },
+        { "$ref": "openehr-common.json#/$defs/DvDate" },
+        { "$ref": "openehr-common.json#/$defs/DvTime" },
+        { "$ref": "openehr-common.json#/$defs/DvDuration" },
+        { "$ref": "openehr-common.json#/$defs/DvOrdinal" },
+        { "$ref": "openehr-common.json#/$defs/DvUri" },
+        { "$ref": "openehr-common.json#/$defs/DvEhrUri" },
+        { "$ref": "openehr-common.json#/$defs/DvMultimedia" },
+        { "$ref": "openehr-common.json#/$defs/DvParsable" },
+        { "$ref": "openehr-common.json#/$defs/DvState" }
       ]
     }
   },
@@ -721,15 +1161,27 @@ Each entry inherits RM **ENTRY** requirements when present in content.
 | Resource | Validator on commit | Key required fields |
 |----------|---------------------|---------------------|
 | EHR / EHR_STATUS | RM + DTO checks | `subject`, `is_queryable`, `is_modifiable` |
-| COMPOSITION | RM + WebTemplate + terminology | See COMPOSITION schema; template must exist |
+| COMPOSITION | RM + WebTemplate + terminology + ADL2 OPT/rules (ADL2 templates) | See COMPOSITION schema; template must exist |
 | CONTRIBUTION | RM (partial) | Non-empty `versions`; server-managed audit timestamps |
-| ADL2 OPT constraints | Archie (not yet on all commit paths) | Value lists, ranges in ADL — use `/definition/template/adl2` + client-side validation |
+| ADL2 OPT constraints | Archie + context walk on commit | Value lists (`CString`), quantity ranges (`COrdered`); component OPTs for nested archetypes; disable with `ehrbase.validation.validate-adl2-opt-on-commit=false` |
+| ADL2 rules | Archie rule engine on commit | Rule assertions in ADL on composition and nested OPTs; disable with `ehrbase.validation.validate-adl2-rules-on-commit=false` |
+
+**ADL2 OPT constraint examples** (from integration fixtures):
+
+| Constraint | ADL pattern | Commit behaviour |
+|------------|-------------|------------------|
+| Endorsement value list | `DV_TEXT` with `value matches {"Robert", "Rick", "Clara"}` | Rejected if value not in list |
+| Weight range | `DV_QUANTITY` with `[units, magnitude]` tuples | Rejected if magnitude outside allowed interval for the unit |
+| Blood pressure rules | ADL `rules` section with assertions | Rejected if assertion evaluates to false (e.g. systolic ≤ diastolic) |
+| Observation wrapper | Composition slot → observation OPT | Component OPT + rules validated on nested content |
 
 For machine-readable API discovery use **Swagger UI** at `/ehrbase/swagger-ui.html`. For the full RM metamodel see `archie/referencemodels/src/main/resources/bmm/openEHR/` (BMM files) and the [openEHR RM specification](https://specifications.openehr.org/releases/RM/latest/).
 
 ---
 
 ## ADL2 template upload
+
+Upload ADL (`.adls`) or serialized OPT JSON. The server parses with Archie, stores the OPT JSON, builds a WebTemplate, and validates supported RM types (see [ADL2 template support](#adl2-template-support)).
 
 ```powershell
 $headers = @{

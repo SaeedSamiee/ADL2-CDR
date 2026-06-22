@@ -67,6 +67,7 @@ import org.ehrbase.openehr.sdk.validation.terminology.TerminologyParam;
 import org.ehrbase.openehr.sdk.webtemplate.model.WebTemplate;
 import org.ehrbase.openehr.sdk.webtemplate.parser.OPTParser;
 import org.ehrbase.service.contribution.ContributionServiceHelperTest;
+import org.ehrbase.adl2.knowledge.Adl2KnowledgeService;
 import org.ehrbase.service.validation.ValidationProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -81,7 +82,9 @@ class ValidationServiceTest {
 
     private final KnowledgeCacheServiceImp knowledgeCacheService = mock();
 
-    private final ValidationProperties serverConfig = new ValidationProperties(true, true);
+    private final Adl2KnowledgeService adl2KnowledgeService = mock(Adl2KnowledgeService.class);
+
+    private final ValidationProperties serverConfig = new ValidationProperties(true, true, true, true);
 
     private final ObjectProvider<ExternalTerminologyValidation> objectProvider = mock();
 
@@ -103,7 +106,12 @@ class ValidationServiceTest {
     }
 
     private final ValidationService spyService = spy(new ValidationServiceImp(
-            knowledgeCacheService, new TerminologyServiceImp(), serverConfig, objectProvider, false));
+            knowledgeCacheService,
+            adl2KnowledgeService,
+            new TerminologyServiceImp(),
+            serverConfig,
+            objectProvider,
+            false));
 
     @BeforeEach
     void setUp() {
