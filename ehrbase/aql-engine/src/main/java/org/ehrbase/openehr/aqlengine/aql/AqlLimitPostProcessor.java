@@ -17,6 +17,7 @@
  */
 package org.ehrbase.openehr.aqlengine.aql;
 
+import java.util.Locale;
 import org.apache.commons.lang3.ObjectUtils;
 import org.ehrbase.api.dto.AqlQueryContext;
 import org.ehrbase.api.dto.AqlQueryRequest;
@@ -86,13 +87,13 @@ public class AqlLimitPostProcessor implements AqlQueryParsingPostProcessor {
         Long queryOffset = aqlQuery.getOffset();
 
         if (queryLimit != null && maxLimit != null && queryLimit > maxLimit) {
-            throw new UnprocessableEntityException(
-                    "Query LIMIT %d exceeds maximum limit %d".formatted(queryLimit, maxLimit));
+            throw new UnprocessableEntityException(String.format(
+                    Locale.ROOT, "Query LIMIT %d exceeds maximum limit %d", queryLimit, maxLimit));
         }
 
         if (fetchParam != null && maxFetch != null && fetchParam > maxFetch) {
-            throw new UnprocessableEntityException(
-                    "Fetch parameter %d exceeds maximum fetch %d".formatted(fetchParam, maxFetch));
+            throw new UnprocessableEntityException(String.format(
+                    Locale.ROOT, "Fetch parameter %d exceeds maximum fetch %d", fetchParam, maxFetch));
         }
 
         Long limit = applyFetchPrecedence(fetchPrecedence, queryLimit, queryOffset, fetchParam, offsetParam);

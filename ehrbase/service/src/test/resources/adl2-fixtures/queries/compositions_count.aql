@@ -1,0 +1,4 @@
+SELECT COUNT(c) AS composition_count
+FROM EHR e
+CONTAINS COMPOSITION c
+WHERE e/ehr_id/value = $ehrId
